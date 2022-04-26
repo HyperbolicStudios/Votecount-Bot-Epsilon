@@ -4,6 +4,7 @@ from pbwrap import Pastebin
 import json
 from pastemyst import Client, Language, Paste, Pasty, ExpiresIn, EditType
 import os
+from replit import db
 #from replit import db
 from inspect import getsourcefile
 from os.path import abspath
@@ -33,20 +34,12 @@ def pasteData(text,persistence = "ONE_HOUR"):
   return("https://paste.myst.rs/"+res4.id)
 
 def getData(key):
-    f = open("db.json")
-    data = json.load(f)
-    return(data[key])
+    return(db[key])
 
 def updateData(key, value):
-    f = open("db.json")
-    data = json.load(f)
-    f.close()
-
-    data[key] = value
-    
-    with open("db.json", "w") as outfile:
-        outfile.write(json.dumps(data, indent = 4))
+    db[key] = value
     return
+
 def listData():
   format = ("Stored data:\n")
 
@@ -56,3 +49,11 @@ def listData():
     else:
       format = format + "{}: {} items.\n".format(key,len(db[key]))
   return format
+
+def setup_db():
+    f = open("db.json")
+    data = json.load(f)
+    for key in data.keys():
+        print(key)
+        db[key] = data[key]
+    return

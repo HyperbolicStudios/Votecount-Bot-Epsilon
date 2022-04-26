@@ -163,16 +163,6 @@ def wipeISO(gameLetter):
   print("Wiped ISO data for game {}.".format(gameLetter))
   return
 
-def collectISO(gameLetter,player,lowerbound = -1,upperbound = 10000000):
-  format = ""
-  i = 0
-  for post in getData("listofposts"+gameLetter):
-    pageNumber = math.ceil(int(post[1])/20)
-    if(post[0].lower() == player.lower() and pageNumber>=lowerbound and pageNumber <= upperbound):
-      i = i+1
-      format = format + """[QUOTE="{}, post: {}, member: 1"]{}[/QUOTE]\n""".format(post[0],post[3],post[2])
-
-  return("Specified ISO of {} contains {} posts. The following link expires in an hour. Happy scumhunting! {}".format(player,i,pasteData(format)))
 
 def collectISOinList(gameLetter,player,lowerbound = -1, upperbound = 100000):
   posts = []
@@ -229,19 +219,17 @@ def listPlayers(gameLetter):
   return(players)
 
 def clearQuotes(posts):
-    cleaned_posts = []
-    for comment in posts:
-        i = 0
-        text = comment[2]
-        while(text.find("""<aside class="quote">""") != -1):
-          tag1 = text.find("""<aside class="quote">""")
-          tag2 = text.find("</aside>")
-          text = text.replace(text[tag1:tag2+8],"")
-          i=i+1
-          if(i>100):
-            print("Stuck in quotes loop")
-           # print(comment[2])
-            break
-        comment[2] = text
-        cleaned_posts.append(comment)
-    return(cleaned_posts)
+  cleaned = []
+  for comment in posts:
+      i = 0
+      text = comment[2]
+      while(text.find("""<aside class="quote">""") != -1):
+        tag1 = text.find("""<aside class="quote">""")
+        tag2 = text.find("</aside>")
+        text = text.replace(text[tag1:tag2+8],"")
+        i=i+1
+        if(i>100):
+          print("Stuck in quotes loop")
+          break
+      cleaned.append([comment[0],comment[1],text])
+  return(cleaned)

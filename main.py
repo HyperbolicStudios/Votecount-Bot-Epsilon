@@ -87,7 +87,7 @@ async def postVCs():
         if(getData("vcStatus"+game) == "on" and timeSpentOn > 3600*48): #turn off after 48 hours
             print("AUTO VOTECOUNTS TURNED OFF BY TIMER")
             await announce(game,"The automatic votecount has been on for 48 consecutive hours. It will now turn off. Use $votecount auto on <page number> to resume, or $votecount <firstpage> <lastpage> to generate a single votecount.")
-            updateData("vcStatus","off")
+            updateData("vcStatus"+game,"off")
 
         if (getData("vcStatus"+game) == "on" and delta > getData("delay"+game) * 60):
             print("Scanning")
@@ -108,7 +108,10 @@ class MyClient(discord.Client):
 
     @tasks.loop(seconds=5) # task runs every 5 seconds
     async def my_background_task(self):
+      try:
         await postVCs()
+      except:
+        print("Loop error!")
 
 client = MyClient()
 tree = app_commands.CommandTree(client)

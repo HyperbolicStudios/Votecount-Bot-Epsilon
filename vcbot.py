@@ -93,7 +93,7 @@ def getVotecount(gameLetter,page1, page2=1000):
     posts = collectAllPosts(gameLetter,page1,page2)
     print("Clearing quotes...")
     posts = clearQuotes(posts)
-    print("God posts. Calculating VC...")
+    print("Got posts. Calculating VC...")
     for post in posts:
         voter = post[0]
         text = post[2].lower()
@@ -101,8 +101,7 @@ def getVotecount(gameLetter,page1, page2=1000):
         tag2 = text.rfind("[/vote]")
 
         if (tag2 > tag1 and tag2 != -1 and tag1 != -1):
-            print("Found vote: ")
-            target = (text[tag1+6:tag2]).strip()
+            target = (text[tag1+6:tag2]).strip().replace("@","")
             #CHECK FOR ALIASES
             if(target.lower() in list_of_aliases.keys()):
               target = list_of_aliases[target.lower()]
