@@ -84,16 +84,16 @@ def getVotecount(gameLetter,page1, page2=1000):
 
     while(text.find("@") != -1):
         text = text[text.find("@"):]
-        player = text[text.find("@")+1:text.find('\n')]
-        while player[-1] == " ":
-          player = player[:-1]
-        print(player)
+        player = text[text.find("@")+1:text.find('\n')].replace(" ","")
         votecount = updateVotecount(votecount,player,"Not voting")
         text = text[text.find('\n'):]
 
     updateISO(gameLetter)
-    posts = clearQuotes(collectAllPosts(gameLetter,page1,page2))
-
+    print("Getting posts.")
+    posts = collectAllPosts(gameLetter,page1,page2)
+    print("Clearing quotes...")
+    posts = clearQuotes(posts)
+    print("God posts. Calculating VC...")
     for post in posts:
         voter = post[0]
         text = post[2].lower()
