@@ -8,12 +8,13 @@ import os
 from keep_alive import keep_alive
 from discord import app_commands
 from typing import Literal
-from vcbot import getVotecount
+from vcbot import getVotecount, updatePlayerlist
 from updateData import getToken, getData, updateData
 from iso import wipeISO, updateISO, collectAllISOs, rankActivity, playerHasPosted, listPlayers
 from queue_manager import get_queue
 intents = discord.Intents.default()
 intents.message_content = True
+test_guild = discord.Object(id="951678432494911528")
 help_message = discord.Embed(
     colour=discord.Color.teal(),
     description = """
@@ -124,6 +125,43 @@ async def url(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], ur
     updateData("url{}".format(game),url)
     wipeISO(game)
     await interaction.response.send_message('Wiped post database and Set url for game {} to {}.'.format(game,url))
+
+@tree.command(guild=test_guild)
+@app_commands.check(is_host)
+@app_commands.describe(game='Available Games',player="Player you want to add a vote to")
+async def add_vote(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], player: str):
+    increments = getData("increments"+game)
+    #of form {'player':'increment'}
+    increments.update({player.lower():increments[player]+0.2})
+    updateData("increments"+game,increments)
+    await interaction.response.send_message('Added 0.2 votes to {}. Total increments added: {}'.format(player,increments[player.lower()]))
+
+@tree.command(guild=test_guild)
+@app_commands.check(is_host)
+@app_commands.describe(game='Available Games',player="Player you want to subtract a vote to")
+async def sub_vote(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], player: str):
+    increments = getData("increments"+game)
+    #of form {'player':'increment'}
+    increments.update({player.lower():increments[player.lower()]-0.2})
+    updateData("increments"+game,increments)
+    await interaction.response.send_message('Subtracted 0.2 votes to {}. Total increments added: {}'.format(player,increments[player.lower()]))
+
+@tree.command(guild=test_guild)
+@app_commands.check(is_host)
+@app_commands.describe(game='Available Games')
+async def reset_counter(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
+    playerlist = updatePlayerlist(game) # playerlist
+    increments = {}
+    for player in playerlist:
+        increments.update({player.lower():0})
+    updateData("increments"+game,increments)
+    await interaction.response.send_message('Reset counters to 0. Players in game: {}'.format(playerlist))
+
+@tree.command(guild=test_guild)
+@app_commands.check(is_host)
+@app_commands.describe(game='Available Games')
+async def print_counter(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
+    await interaction.response.send_message(getData("increments"+game))
 
 @tree.command()
 @app_commands.check(is_host)
@@ -276,9 +314,13 @@ async def on_ready():
     print('------')
 
     await tree.sync()
-    #await tree.sync(guild=discord.Object(id="951678432494911528"))
-    #await updateDBs.start()
+    await tree.sync(guild=test_guild)
 
-
+channels = {"A":["p1","p2","p3"],"B":["p4","p5","p6"]}
+def getChannelByName(message,name):
+    for channel in message.guild.channels:
+        if channel.name == name:
+            return(channel)
+    return(None)
 
 client.run(getToken("discord"))
