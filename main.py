@@ -1,17 +1,20 @@
-import discord
-import asyncio
 import math
-from discord.ext import tasks, commands
 import datetime
 import traceback
 import os
-from keep_alive import keep_alive
+
+import discord
 from discord import app_commands
+from discord.ext import tasks, commands
+import asyncio
+
+from keep_alive import keep_alive
 from typing import Literal
 from vcbot import getVotecount, updatePlayerlist
 from updateData import getToken, getData, updateData
-from iso import wipeISO, updateISO, collectAllISOs, rankActivity, playerHasPosted, listPlayers
-from queue_manager import get_queue
+from iso import wipeISO, updateISO, rankActivity, playerHasPosted
+from epsilon_commands import Special, Queue, RIVA, Alias
+
 intents = discord.Intents.default()
 intents.message_content = True
 test_guild = discord.Object(id="951678432494911528")
@@ -20,7 +23,7 @@ help_message = discord.Embed(
     description = """
     Epsilon is a combined votecount and ISO bot. It simultaneously handles three games (named A, B, and C), handles ISOs, posts automatic and manual votecounts, and checks for any hammers that occur.
 
-    Note for mods: please ensure that the "Living Players" spoiler is up-to-date in the OP, as the bot uses that list to determine if a hammer has occured.
+    Note for mods: please ensure that the "Living Players" spoiler is up-to-date in the OP, as the bot uses that list to determine if a hammer has occured. Ensure that each living player is tagged properly. The 'Living Players' spoiler should be immediately followed by a 'Dead Players' spoiler.
 
     Also note that due to popular request, the [unvote] tag has been disabled.
 
@@ -30,18 +33,17 @@ help_message = discord.Embed(
     `/vc_auto_on <game> first_page>` - turns on the auto VC function.\n
     `/vc_auto_off <game>` - turns it off.\n
     `/vc_delay <game> <delay>` - sets the auto VC delay in minutes.\n
-    `/queue_init` - updates the queue. (Mod team use only)\n\n
+    `/queue update` - updates the queue. (Mod team use only)\n\n
 
     **Public Commands** *Anyone can use these.*\n
     `/updateISO <game>` - manually updates the ISO database for that game.\n
     `/iso <game> <player>` - links you to the ISO for that player.\n
     `/rank_activity <game>` - lists every player and their postcount.\n
-    `/alias <alias> <truename>` - create an alias for a player.\n
-    `/change_name old_name new_name` - if you change your forum name, use this command to shift all your old aliases to your new name.\n
-    `/alias_print` - prints all aliases stored.\n
+    `/alias add <alias> <truename>` - create an alias for a player.\n
+    `/change_forum_name old_name new_name` - if you change your forum name, use this command to shift all your old aliases to your new name.\n
+    `/alias print` - prints all aliases stored.\n
     `/getvc <game> <p1> <p2>` - gets a votecount for that game, from page 1 to page 2.
-    """
-    )
+    """)
 
 keep_alive()
 TOKEN = getToken("discord")
@@ -68,16 +70,20 @@ async def updateStatus(status):
     return
 
 
-async def announce(game, text):
+async def announce(game, text,embed=False):
     for channel in channels[game]:
+      if embed:
+        await client.get_channel(channel).send(embed=text)
+      else:
         await client.get_channel(channel).send(text)
     return
 
 def is_host(interaction: discord.Interaction) -> bool:
     for role in interaction.user.roles:
-        print(role)
-        if(role.name in ["Mafia","Puppeteer (Host)"]):
-            return True
+        if(role.name in ["Mafia","Puppeteer (Host)", "Mod"]):
+          print("Passed check.")
+          return True
+    print("FAILED check.")
     return False
 
 async def postVCs():
@@ -93,29 +99,37 @@ async def postVCs():
         if (getData("vcStatus"+game) == "on" and delta > getData("delay"+game) * 60):
             print("Scanning")
             await announce(game,"Getting a votecount. This may take some time. First page: " + str(getData("first_page"+game)))
-            votecount = getVotecount(game,getData("first_page"+game),1000)
-            await announce(game,votecount)
+            votecount = await getVotecount(game,getData("first_page"+game),1000)
+            await announce(game,votecount,embed=True)
             await announce(game,"The next votecount will be processed in " + str(getData("delay"+game) / 60) + " hours. You can view this votecount and all previous votecounts in the #votecounts channel in Discord.")
             updateData("last_time"+game, datetime.datetime.now().isoformat())
     return
 
 class MyClient(discord.Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *, intents: discord.Intents, application_id: int):
+        super().__init__(intents=intents, application_id=application_id)
 
     async def setup_hook(self) -> None:
-        # start the task to run in the background
-      self.my_background_task.start()
+      self.my_background_task.start() # start the task to run in the background
 
-    @tasks.loop(seconds=5) # task runs every 5 seconds
+    @tasks.loop(seconds=30) # task runs every 30 seconds
     async def my_background_task(self):
       try:
         await postVCs()
       except:
         print("Loop error!")
 
-client = MyClient()
+    @my_background_task.before_loop
+    async def before_my_task(self):
+        await self.wait_until_ready()  # wait until the bot logs in
+
+client = MyClient(intents=intents,application_id=938301434884157450)
 tree = app_commands.CommandTree(client)
+tree.add_command(Special())
+tree.add_command(Queue())
+tree.add_command(RIVA())
+tree.add_command(Alias())
+
 #ISO MANAGEMENT
 
 @tree.command()
@@ -125,71 +139,6 @@ async def url(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], ur
     updateData("url{}".format(game),url)
     wipeISO(game)
     await interaction.response.send_message('Wiped post database and Set url for game {} to {}.'.format(game,url))
-
-@tree.command(guild=test_guild)
-@app_commands.check(is_host)
-@app_commands.describe(game='Available Games',player="Player you want to add a vote to")
-async def add_vote(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], player: str):
-    increments = getData("increments"+game)
-    #of form {'player':'increment'}
-    increments.update({player.lower():increments[player]+0.2})
-    updateData("increments"+game,increments)
-    await interaction.response.send_message('Added 0.2 votes to {}. Total increments added: {}'.format(player,increments[player.lower()]))
-
-@tree.command(guild=test_guild)
-@app_commands.check(is_host)
-@app_commands.describe(game='Available Games',player="Player you want to subtract a vote to")
-async def sub_vote(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], player: str):
-    increments = getData("increments"+game)
-    #of form {'player':'increment'}
-    increments.update({player.lower():increments[player.lower()]-0.2})
-    updateData("increments"+game,increments)
-    await interaction.response.send_message('Subtracted 0.2 votes to {}. Total increments added: {}'.format(player,increments[player.lower()]))
-
-@tree.command(guild=test_guild)
-@app_commands.check(is_host)
-@app_commands.describe(game='Available Games')
-async def reset_counter(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
-    playerlist = updatePlayerlist(game) # playerlist
-    increments = {}
-    for player in playerlist:
-        increments.update({player.lower():0})
-    updateData("increments"+game,increments)
-    await interaction.response.send_message('Reset counters to 0. Players in game: {}'.format(playerlist))
-
-@tree.command(guild=test_guild)
-@app_commands.check(is_host)
-@app_commands.describe(game='Available Games')
-async def print_counter(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
-    await interaction.response.send_message(getData("increments"+game))
-
-@tree.command()
-@app_commands.check(is_host)
-async def queue_init(interaction: discord.Interaction):
-  await interaction.response.send_message("Updating!",ephemeral=True)
-  for guild in client.guilds:
-    for channel in guild.channels:
-      if channel.name == "mafia-hosting-queues":
-        print("-------------")
-        queues = getData("queues")
-        if queues is None:
-          queues = {}
-        if str(channel.id) in list(queues.keys()):
-          try:
-            msg = await channel.fetch_message(queues[str(channel.id)])
-            await msg.edit(content=get_queue())
-          except:
-            msg = await channel.send(get_queue())
-            queues.update({channel.id:str(msg.id)})
-            updateData("queues",queues)
-            print("New queue msg created.")
-
-        else:
-          msg = await channel.send(get_queue())
-          queues.update({channel.id:str(msg.id)})
-          updateData("queues",queues)
-          print("New queue msg created.")
-
 
 @tree.command()
 @app_commands.check(is_host)
@@ -204,7 +153,7 @@ async def wipe(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
 @app_commands.describe(game='Available Games')
 async def update(interaction: discord.Interaction, game: Literal['A', 'B', 'C']):
     await interaction.response.send_message('Updating database for game {}. This may take a while.'.format(game))
-    updateISO(game)
+    await updateISO(game)
     channel = getChannelByName(interaction.guild,"iso-bot")
     await channel.send("Update for game {} complete.".format(game))
 
@@ -220,8 +169,8 @@ async def iso(interaction: discord.Interaction, game: Literal['A', 'B', 'C'], pl
 @tree.command()
 @app_commands.describe(game='Available Games')
 async def rank_activity(interaction: discord.Interaction, game: Literal['A', 'B', 'C'],select_players: Literal['alive','all']):
-    text = rankActivity(game,select_players=='active')
     await interaction.response.send_message("Ranking activity for game {}...".format(game))
+    text = rankActivity(game,select_players=='alive')
     channel = getChannelByName(interaction.guild,"iso-bot")
     await channel.send(text)
 
@@ -251,47 +200,27 @@ async def vc_delay(interaction: discord.Interaction, game: Literal['A','B','C'],
     updateData("delay"+game,delay)
 
 @tree.command()
-@app_commands.describe(alias='alias',true_name='forum username (not case sensitive)')
-async def alias(interaction: discord.Interaction, alias: str, true_name: str):
-    list_of_aliases = getData("list_of_aliases")
-    list_of_aliases.update({alias.lower():true_name.lower()})
-    updateData("list_of_aliases",list_of_aliases)
-    await interaction.response.send_message("{} is an alias of {}.".format(alias,true_name))
-
-@tree.command()
-@app_commands.describe(old_name = "old forum name", new_name = "new forum name")
-async def change_name(interaction: discord.Interaction, old_name: str, new_name: str):
-    list_of_aliases = getData("list_of_aliases")
-    for key in list_of_aliases.keys():
-        if(list_of_aliases[key].lower() == old_name.lower()):
-            list_of_aliases.update({key:new_name.lower()})
-    updateData("list_of_aliases",list_of_aliases)
-    await interaction.response.send_message("Switched name from {} to {}.".format(old_name,new_name))
-
-@tree.command()
-async def alias_print(interaction: discord.Interaction):
-    list_of_aliases = getData("list_of_aliases")
-    format = "**List of aliases:**\n"
-    for alias in list_of_aliases.keys():
-        format = format+alias + "->" + list_of_aliases[alias] + "\n"
-    await interaction.response.send_message(format)
-
-@tree.command()
 async def getvc(interaction: discord.Interaction, game: Literal["A","B","C"],p1: int, p2: int):
     await interaction.response.send_message("Getting votecount. This might take a bit...")
-    text = getVotecount(game,p1,p2)
-    await interaction.channel.send(text)
+    text = await getVotecount(game,p1,p2)
+    await interaction.channel.send(embed=text)
 
 @tree.command()
 async def help(interaction: discord.Interaction):
     await interaction.response.send_message(embed=help_message,ephemeral=True)
 
+@tree.command(guild=test_guild)
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("Still here!")
 
-"""@client.event
+
+@client.event
 async def tree_eh(interaction, command, error):
-    await interaction.response.send_message('Error: are you the host? Otherwise, web error')
+    try:
+        await interaction.response.send_message(embed=discord.Embed(color=discord.Color.red(),description=error))
+    except:
+        await interaction.channel.send(embed+discord.Embed(color=discord.Color.red(),description=error))
 tree.on_error = tree_eh
-"""
 
 
 @client.event
@@ -310,17 +239,15 @@ async def on_ready():
                 if channel.name == "votecount-game-"+game.lower():
                     channels[game].append(channel.id)
     updateData("channels",channels)
-
+    tree.copy_global_to(guild=test_guild)
+    await tree.sync(guild=test_guild)
     print('------')
 
-    await tree.sync()
-    await tree.sync(guild=test_guild)
-
-channels = {"A":["p1","p2","p3"],"B":["p4","p5","p6"]}
-def getChannelByName(message,name):
-    for channel in message.guild.channels:
-        if channel.name == name:
-            return(channel)
-    return(None)
+@client.event
+async def on_message(message):
+    if(message.content == "$sync" and message.guild.id == test_guild.id):
+        await tree.sync()
+        await message.channel.send("Synced commands to global. This may take a few hours to propogate.")
+        print("Synced commands.")
 
 client.run(getToken("discord"))
