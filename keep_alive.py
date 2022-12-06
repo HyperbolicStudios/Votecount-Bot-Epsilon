@@ -19,6 +19,16 @@ app = Flask('')
 def home():
     return("I'm alive!")
 
+@app.route("/restart")
+def restart():
+  return render_template("restart.html")
+
+@app.route("/restart_now")
+def restart_now():
+  import os
+  os.system("kill 1")
+  return("Restarted")
+
 @app.route("/db_url",methods=['POST'])
 def return_url():
 
@@ -48,12 +58,8 @@ def targetiso(game,target):
       while(text_bbcode.find("""<aside class="quote">""") != -1):
         print("found quote")
         tag1 = text_bbcode.find("""<aside class="quote">""")
-        print(tag1)
-
         tag2 = text_bbcode.find("</aside>")
-        print(tag2)
         text_bbcode = text_bbcode.replace(text_bbcode[tag1:tag2+8],"")
-        print("l")
         i=i+1
         if(i>100):
           print("Stuck in quotes loop")
@@ -62,8 +68,9 @@ def targetiso(game,target):
 
       posts_edited.append(post(comment[0],str(comment[1]),comment[2],text_bbcode,str(comment[3]),comment[4]))
 
+
     print("Rendering")
-    return render_template('targetiso.html',url=getData("URLA")+"post-", target=target,posts=posts_edited,gameletter=game)
+    return render_template('targetiso.html',url=getData("url"+game)+"post-", target=target,posts=posts_edited,gameletter=game)
 
 
 
